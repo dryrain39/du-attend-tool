@@ -13,3 +13,7 @@
  - ECB
  - Input: Hex
  - Output: Raw
+ 
+ 참고사항
+ - QR코드 스캔은 https에서만 됨. ( https://stackoverflow.com/questions/16835421/how-to-allow-chrome-to-access-my-camera-on-localhost )
+ - 카카오톡 브라우저나 퍼핀 등 외부 브라우저에서 스캐너 동작 안 되는 경우 있음.
