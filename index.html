@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>DU attendance tool</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <link rel="stylesheet" href="./css/bootstrap.min.css">
+
+    <script src="./js/html5-qrcode.min.js"></script>
+    <script src="./js/jquery-3.5.1.min.js"></script>
+    <script src="./js/bootstrap.min.js"></script>
+
+    <script src="./js/crypto/crypto-js.js"></script>
+    <script src="./js/crypto/aes.js"></script>
+    <script src="./js/crypto/mode-ecb.js"></script>
+    <script src="./js/crypto/pad-nopadding.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@json-editor/json-editor@latest/dist/jsoneditor.min.js"></script>
+
+
+</head>
+<body>
+
+
+<div class="container mt-3">
+    <h2 class="text-center">Attendance tool</h2>
+    <div class="alert alert-warning" role="alert">
+        기본 브라우저를 이용해 주십시오 (카메라 문제).<br>시크릿 탭을 사용하면 데이터가 유실될 위험이 있습니다.
+    </div>
+
+    <div class="card" style="">
+        <div class="card-body">
+            <h5 class="card-title">저장된 강의실</h5>
+            <!--            <h6 class="card-subtitle mb-2 text-muted">Card subtitle</h6>-->
+            <p class="card-text" id="classroom">
+<!--                <button class="btn btn-outline-success mb-1">미완성 강의실</button>-->
+            </p>
+            <button class="  btn btn-outline-secondary" id="addQRBtn" onclick="addFromQR()">QR</button>
+            <button class="  btn btn-outline-info" onclick="openClassroomEditor(true)">편집</button>
+            <!--            <button class="card-link btn btn-outline-secondary">추가(번호)</button>-->
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <button class="card-link btn btn-outline-secondary btn-block"
+                onclick="stdIDChange()">학번 확인/변경
+        </button>
+    </div>
+    <div class="mt-3">
+        <button class="card-link btn btn-outline-secondary btn-block"
+                onclick="keyChange()">키 확인/변경
+        </button>
+    </div>
+
+    <div class="card mt-3" id="classroom_editor_div" style="display: none">
+        <div class="card-body">
+            <h5 class="card-title">에디터</h5>
+            <div class="form-group">
+                <label for="classroom_editor">Classroom Data</label>
+                <textarea class="form-control" id="classroom_editor" rows="7"></textarea>
+            </div>
+
+            <button class="card-link btn btn-outline-success" onclick="saveClassroomEditor()">저장</button>
+            <button class="card-link btn btn-outline-info" onclick="openClassroomEditor(false);">인덴트 끄기/전체 선택</button>
+            <button class="card-link btn btn-outline-danger" onclick="$('#classroom_editor_div').hide()">취소</button>
+        </div>
+    </div>
+
+
+    <!--    <button onclick="start()" class="btn btn-primary">start</button>-->
+
+    <div id="edit">
+
+    </div>
+</div>
+<br><br>
+
+<div class="modal fade" id="CameraSelectModal" tabindex="-1" role="dialog" aria-labelledby="QRModalLabel"
+     aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="CameraSelectModalLabel">카메라 선택</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body align-content-center text-center">
+                <div class="alert alert-info" id="CameraSelectModalAlert" role="alert">
+                    사용할 카메라를 선택해 주십시오.
+                </div>
+                <div class="mb-1" id="CameraSelect">
+                    <button class="btn btn-outline-success btn-block">전면 카메라 (선택됨)</button>
+                    <button class="btn btn-outline-secondary btn-block">후면 카메라</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="QRModal" tabindex="-1" role="dialog" aria-labelledby="QRModalLabel" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="QRModalLabel">QR코드 인식</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body align-content-center text-center">
+                <div class="alert alert-warning" id="QRModalAlert" role="alert">
+                    카메라 권한을 허용해 주십시오.
+                </div>
+                <div class="mb-3">
+                    <button class="btn btn-outline-info" data-dismiss="modal" onclick="CameraSelectModal.modal()">카메라
+                        변경
+                    </button>
+                </div>
+                <div id="reader" class="" style=""></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let QRModal = $('#QRModal');
+    let CameraSelectModal = $('#CameraSelectModal');
+    let current_html5QRCode = undefined;
+    let cameraList = [];
+    let classrooms = getClassroom();  // {sid: sid, tid: tid, name: name, color: color}
+
+
+    function addClassroom(sid, tid, name, color = "success") {
+        if (!/\b[\d]{1,10}\b/.test(sid) || !/\b[\d]{1,10}\b/.test(tid) || !/\bsuccess|danger|warning|info|secondary|primary\b/.test(color)) {
+            alert("올바르지 않은 데이터입니다.");
+            return false;
+        }
+        classrooms.push({sid: sid, tid: tid, name: name, color: color});
+        displayClassroom();
+        setClassroom();
+        return true;
+    }
+
+    function displayClassroom() {
+        // <button class="btn btn-outline-success mb-1">미완성 강의실</button>
+        let classroom_selector = $("#classroom")
+        classroom_selector.empty();
+
+        classrooms.forEach(function (room) {
+            classroom_selector.append(`<button class="btn btn-outline-${room.color} mb-1" onclick="attend(${room.sid}, ${room.tid})">${room.name}</button> `)
+        })
+    }
+
+    function getClassroom() {
+        let r = localStorage.getItem('classroom');
+        return r ? JSON.parse(r) : []
+    }
+
+    function setClassroom() {
+        localStorage.setItem('classroom', JSON.stringify(classrooms));
+    }
+
+    function openClassroomEditor(indent) {
+        let editor = $('#classroom_editor');
+
+        if (indent)
+            editor.val(JSON.stringify(classrooms, null, 4));
+        else {
+            editor.val(JSON.stringify(classrooms));
+            editor.select()
+        }
+
+        $('#classroom_editor_div').show();
+    }
+
+    function saveClassroomEditor() {
+        let c
+        try {
+            c = JSON.parse($('#classroom_editor').val())
+        } catch (e) {
+            alert("저장에 실패하였습니다. JSON형식을 확인해 주십시오.");
+            return;
+        }
+
+        let backup = $.extend(true, [], classrooms);
+        classrooms = [];
+        let success = true;
+
+        c.forEach(function (e) {
+            if (!addClassroom(e.sid, e.tid, e.name, e.color))
+                success = false
+        });
+
+        if (success) {
+            displayClassroom();
+            setClassroom();
+            $('#classroom_editor_div').hide();
+        }else{
+            classrooms = backup;
+            displayClassroom();
+            setClassroom();
+        }
+    }
+
+    function attend(sid, tid) {
+        let stdID = btoa(getStdID());
+        let nfcData = btoa(`sid=${sid}:tid=${tid}`)
+        let parameter = `?sno=${stdID}&nfc=${nfcData}&type=UQ==&gpsLati=MA==&gpsLong=MA==&time_stamp=%7BtimeStamp%7D&pgmNew=Y`
+        window.open('http://attend.daegu.ac.kr:8081/web/std/checkAttend.do' + parameter, '_blank');
+    }
+
+    function parseURL() {
+        let hash = window.location.hash.substr(1);
+        return hash.split('&').reduce(function (result, item) {
+            let parts = item.split('=');
+            result[parts[0]] = parts[1];
+            return result;
+        }, {})
+    }
+
+    function stdIDChange() {
+        let current_stdID = getStdID();
+        if (confirm(`현재 학번은 ${current_stdID} 입니다. 변경하시겠습니까?`)) {
+            localStorage.setItem('stdID', prompt('학번을 입력하세요'))
+        }
+    }
+
+    function keyChange() {
+        let current_stdID = localStorage.getItem('key');
+        if (confirm(`현재 키는 ${current_stdID} 입니다. 변경하시겠습니까?`)) {
+            localStorage.setItem('key', prompt('키를 입력하세요'))
+        }
+    }
+
+    function getStdID() {
+        let lo_std = localStorage.getItem('stdID');
+        if (!lo_std) {
+            let p = prompt("학번을 입력하세요.");
+            localStorage.setItem("stdID", p);
+            lo_std = localStorage.getItem('stdID');
+        }
+
+        return lo_std
+    }
+
+    $(document).ready(function () {
+        let b = navigator.userAgent.toLowerCase();
+        if (b.includes("kakaotalk")) {
+            alert("카카오톡에서는 QR 인식 기능이 동작하지 않습니다. 기본 브라우저에서 접속하십시오.")
+        }
+
+        if (b.includes("puffin")) {
+            alert("기본 브라우저에서 접속하십시오.")
+        }
+
+        let hashes = parseURL();
+        if (hashes.setKey) {
+            localStorage.setItem('key', hashes.setKey);
+        }
+
+        displayClassroom();
+
+    })
+
+    // ...
+    QRModal.on('hide.bs.modal', function (e) {
+        if (current_html5QRCode) {
+            current_html5QRCode.stop();
+            current_html5QRCode = undefined;
+        }
+    })
+
+    CameraSelectModal.on('show.bs.modal', function (e) {
+        listCamera();
+    })
+
+    Array.prototype.swap = function (a, b) {
+        let temp = this[a];
+        this[a] = this[b];
+        this[b] = temp;
+    };
+
+    // ...
+
+    function setKey() {
+        let key = prompt("키 입력")
+        localStorage.setItem('key', key);
+    }
+
+    function decrypt_qr(inputText) {
+        let cipherText = CryptoJS.enc.Hex.parse(inputText);
+        let passHash = localStorage.getItem('key') ? localStorage.getItem('key') : '';
+        let key = CryptoJS.enc.Hex.parse(passHash.toString(CryptoJS.enc.Hex).substr(0, 32));
+
+        let decrypted = CryptoJS.AES.decrypt({
+            ciphertext: cipherText
+        }, key, {
+            mode: CryptoJS.mode.ECB,
+            padding: CryptoJS.pad.Pkcs7
+        });
+
+        let result = {
+            success: false,
+            sid: "",
+            tid: ""
+        };
+        let decryptedString = decrypted.toString(CryptoJS.enc.Utf8);
+
+        if (decryptedString.includes("sid=") && decryptedString.includes(":tid=") && !isNaN((decryptedString.split('tid=')[1] * 1))) {
+            let tempText = decryptedString.split(':');
+            result.success = true;
+            result.sid = tempText[0].split('=')[1]
+            result.tid = tempText[1].split('=')[1]
+        }
+
+        return result;
+    }
+
+    function listCamera() {
+        let camSelect = $('#CameraSelect');
+        camSelect.empty();
+
+        for (let i = 0; i < cameraList.length; i++) {
+            if (i === 0) {
+                camSelect.append(`<button class="btn btn-outline-success btn-block" data-dismiss="modal" onclick="addFromQR();">✓ ${cameraList[i].label}</button>`)
+            } else {
+                camSelect.append(`<button class="btn btn-outline-secondary btn-block" onclick="selectCamera(${i})">${cameraList[i].label}</button>`)
+            }
+        }
+    }
+
+    function sortCamera() {
+        for (let i = 0; i < cameraList.length; i++) {
+            if (cameraList[i].label.includes("0, facing back")) {
+                cameraList.swap(i, 0)
+                break;
+            }
+
+            if (cameraList[i].label.includes("후면 카메라")) {
+                cameraList.swap(i, 0)
+                break;
+            }
+        }
+    }
+
+    function selectCamera(i) {
+        CameraSelectModal.modal('hide');
+        cameraList.swap(i, 0);
+        addFromQR();
+    }
+
+    async function addFromQR() {
+        alertText('#QRModalAlert', 'warning', "카메라 권한을 허용해 주십시오.");
+        QRModal.modal();
+
+        if (!cameraList.length) {
+            cameraList = await getCameraList();
+            sortCamera();
+        }
+
+        console.log(cameraList)
+        if (!cameraList.length) {
+            console.log("사용 가능한 카메라가 없습니다.");
+
+            alertText('#QRModalAlert', 'danger', "사용 가능한 카메라가 없거나 차단되었습니다.");
+
+            QRModal.modal('hide');
+            $('#addQRBtn').attr('disabled', true);
+            return;
+        }
+
+
+        alertText('#QRModalAlert', 'info', "QR코드를 인식시켜 주십시오.");
+        let result = await captureQRData(cameraList[0].id);
+        addClassroom(result.sid, result.tid, `${result.tid} 강의실`);
+    }
+
+    // change alert box
+    function alertText(id, lv, text) {
+        $(id).html(text).removeClass(function (index, className) {
+            return (className.match(/(alert-(warning|danger|info|success|primary))/g) || []).join(' ');
+        }).addClass('alert-' + lv)
+    }
+
+    // check qr data
+    function checkQRData(data) {
+        return /\b[0-9a-fA-F]{31,65}\b/.test(data)
+    }
+
+    // This method will trigger user permissions
+    function getCameraList() {
+        return new Promise(function (resolve, reject) {
+            Html5Qrcode.getCameras().then(devices => {
+                /**
+                 * devices would be an array of objects of type:
+                 * { id: "id", label: "label" }
+                 */
+                console.log(devices)
+                if (devices && devices.length) {
+                    resolve(devices)
+                } else {
+                    resolve([])
+                }
+            }).catch(err => {
+                console.log(err)
+                resolve([]);
+            });
+        });
+
+    }
+
+    function captureQRData(cid) {
+        return new Promise(function (resolve, reject) {
+            const html5QrCode = new Html5Qrcode(/* element id */ "reader");
+            current_html5QRCode = html5QrCode;
+            html5QrCode.start(
+                cid,
+                {
+                    fps: 25,    // Optional frame per seconds for qr code scanning
+                    // qrbox: 250  // Optional if you want bounded box UI
+                },
+                qrCodeMessage => {
+                    // do something when code is read
+                    // $('#hit').append('<p>' + qrCodeMessage + '</p>');
+
+                    if (checkQRData(qrCodeMessage)) {
+                        let decrypt = decrypt_qr(qrCodeMessage)
+                        if (decrypt.success) {
+                            html5QrCode.stop();
+                            // alert(decrypt.tid)
+                            QRModal.modal('hide');
+                            alertText('#QRModalAlert', 'success', "인식이 완료되었습니다. ");
+                            resolve(decrypt)
+                        } else {
+                            alertText('#QRModalAlert', 'danger', "복호화에 실패하였습니다. <a href='#' onclick='setKey()'>키 재설정</a>");
+                        }
+
+                    } else {
+                        alertText('#QRModalAlert', 'warning', "올바른 QR코드가 아닙니다. ");
+                    }
+
+                    console.log(qrCodeMessage)
+                },
+                errorMessage => {
+                    // parse error, ignore it.
+                    // console.log(errorMessage)
+                })
+                .catch(err => {
+                    console.log(err)
+                    alert(err)
+                    html5QrCode.stop();
+                });
+        })
+    }
+
+</script>
+</body>
+</html>
